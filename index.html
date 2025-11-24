@@ -1,0 +1,554 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>极速赛车</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Arial', sans-serif;
+        }
+        
+        body {
+            background: #1a1a1a;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            color: white;
+            overflow: hidden;
+        }
+        
+        .game-container {
+            position: relative;
+        }
+        
+        canvas {
+            border: 3px solid #333;
+            background: #222;
+            box-shadow: 0 0 20px rgba(0, 200, 255, 0.3);
+        }
+        
+        .game-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            right: 10px;
+            display: flex;
+            justify-content: space-between;
+            padding: 0 20px;
+            font-size: 24px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.8);
+            z-index: 10;
+        }
+        
+        .start-screen, .game-over-screen {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.85);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            z-index: 20;
+            text-align: center;
+        }
+        
+        .game-over-screen {
+            display: none;
+        }
+        
+        h1 {
+            font-size: 48px;
+            margin-bottom: 20px;
+            color: #00ccff;
+            text-shadow: 0 0 15px rgba(0,204,255,0.7);
+        }
+        
+        p {
+            font-size: 22px;
+            margin: 10px 0;
+        }
+        
+        .btn {
+            background: linear-gradient(45deg, #00ccff, #0066ff);
+            border: none;
+            color: white;
+            padding: 15px 40px;
+            font-size: 20px;
+            border-radius: 30px;
+            margin-top: 20px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 5px 15px rgba(0,102,255,0.4);
+        }
+        
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 20px rgba(0,102,255,0.6);
+        }
+        
+        .controls {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: none;
+            gap: 20px;
+        }
+        
+        .control-btn {
+            width: 60px;
+            height: 60px;
+            border-radius: 50%;
+            background: rgba(0,102,255,0.3);
+            border: 2px solid #00ccff;
+            color: white;
+            font-size: 24px;
+            cursor: pointer;
+        }
+        
+        @media (max-width: 768px) {
+            .controls {
+                display: flex;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+        <div class="game-info">
+            <span>分数: <span id="score">0</span></span>
+            <span>生命: <span id="lives">3</span></span>
+        </div>
+        
+        <!-- 开始界面 -->
+        <div class="start-screen" id="startScreen">
+            <h1>极速赛车</h1>
+            <p>使用方向键 ← → 控制赛车</p>
+            <p>躲避其他车辆，获得高分！</p>
+            <button class="btn" id="startBtn">开始游戏</button>
+        </div>
+        
+        <!-- 游戏结束界面 -->
+        <div class="game-over-screen" id="gameOverScreen">
+            <h1>游戏结束</h1>
+            <p>最终得分: <span id="finalScore">0</span></p>
+            <button class="btn" id="restartBtn">重新开始</button>
+        </div>
+        
+        <!-- 移动设备控制按钮 -->
+        <div class="controls">
+            <button class="control-btn" id="leftBtn">←</button>
+            <button class="control-btn" id="rightBtn">→</button>
+        </div>
+    </div>
+
+    <!-- 音效元素 -->
+    <audio id="bgMusic" loop preload="auto">
+        <source src="https://assets.mixkit.co/sfx/preview/mixkit-fast-rocket-launch-1714.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="crashSound" preload="auto">
+        <source src="https://assets.mixkit.co/sfx/preview/mixkit-car-crash-collision-2042.mp3" type="audio/mpeg">
+    </audio>
+    <audio id="scoreSound" preload="auto">
+        <source src="https://assets.mixkit.co/sfx/preview/mixkit-arcade-mechanical-bling-210.mp3" type="audio/mpeg">
+    </audio>
+
+    <script>
+        // 获取DOM元素
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startScreen = document.getElementById('startScreen');
+        const gameOverScreen = document.getElementById('gameOverScreen');
+        const startBtn = document.getElementById('startBtn');
+        const restartBtn = document.getElementById('restartBtn');
+        const scoreElement = document.getElementById('score');
+        const livesElement = document.getElementById('lives');
+        const finalScoreElement = document.getElementById('finalScore');
+        const leftBtn = document.getElementById('leftBtn');
+        const rightBtn = document.getElementById('rightBtn');
+        
+        // 音效元素
+        const bgMusic = document.getElementById('bgMusic');
+        const crashSound = document.getElementById('crashSound');
+        const scoreSound = document.getElementById('scoreSound');
+        
+        // 游戏设置
+        const GAME_SETTINGS = {
+            carWidth: 50,
+            carHeight: 100,
+            roadWidth: 300,
+            laneCount: 3,
+            laneWidth: 100,
+            carSpeed: 5,
+            enemySpeed: 3,
+            enemySpawnRate: 1500,
+            scoreIncrement: 10,
+            scoreInterval: 1000
+        };
+        
+        // 游戏状态
+        const gameState = {
+            isRunning: false,
+            score: 0,
+            lives: 3,
+            playerX: canvas.width / 2 - GAME_SETTINGS.carWidth / 2,
+            playerY: canvas.height - GAME_SETTINGS.carHeight - 50,
+            enemies: [],
+            scoreIntervalId: null,
+            enemySpawnIntervalId: null
+        };
+        
+        // 颜色定义
+        const COLORS = {
+            road: '#333',
+            lane: '#666',
+            playerCar: '#00ccff',
+            enemyCars: ['#ff3333', '#ffcc00', '#33ff33', '#ff33cc', '#9933ff'],
+            grass: '#2d5d2d'
+        };
+        
+        // 初始化游戏
+        function initGame() {
+            gameState.score = 0;
+            gameState.lives = 3;
+            gameState.playerX = canvas.width / 2 - GAME_SETTINGS.carWidth / 2;
+            gameState.enemies = [];
+            gameState.isRunning = true;
+            
+            // 更新UI
+            scoreElement.textContent = gameState.score;
+            livesElement.textContent = gameState.lives;
+            gameOverScreen.style.display = 'none';
+            
+            // 开始音效
+            bgMusic.volume = 0.3;
+            bgMusic.play().catch(err => console.log('背景音乐播放失败:', err));
+            
+            // 设置定时器
+            gameState.scoreIntervalId = setInterval(incrementScore, GAME_SETTINGS.scoreInterval);
+            gameState.enemySpawnIntervalId = setInterval(spawnEnemy, GAME_SETTINGS.enemySpawnRate);
+            
+            // 开始游戏循环
+            gameLoop();
+        }
+        
+        // 游戏循环
+        function gameLoop() {
+            if (!gameState.isRunning) return;
+            
+            // 清除画布
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制背景
+            drawBackground();
+            
+            // 绘制玩家赛车
+            drawPlayerCar();
+            
+            // 绘制敌人赛车
+            drawEnemies();
+            
+            // 更新敌人位置
+            updateEnemies();
+            
+            // 检测碰撞
+            checkCollisions();
+            
+            // 继续游戏循环
+            requestAnimationFrame(gameLoop);
+        }
+        
+        // 绘制背景
+        function drawBackground() {
+            // 绘制草地
+            ctx.fillStyle = COLORS.grass;
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // 绘制道路
+            const roadX = (canvas.width - GAME_SETTINGS.roadWidth) / 2;
+            ctx.fillStyle = COLORS.road;
+            ctx.fillRect(roadX, 0, GAME_SETTINGS.roadWidth, canvas.height);
+            
+            // 绘制车道线
+            ctx.strokeStyle = COLORS.lane;
+            ctx.lineWidth = 4;
+            
+            for (let i = 1; i < GAME_SETTINGS.laneCount; i++) {
+                const laneX = roadX + i * GAME_SETTINGS.laneWidth;
+                ctx.beginPath();
+                ctx.setLineDash([20, 15]);
+                ctx.moveTo(laneX, 0);
+                ctx.lineTo(laneX, canvas.height);
+                ctx.stroke();
+                ctx.setLineDash([]);
+            }
+        }
+        
+        // 绘制玩家赛车
+        function drawPlayerCar() {
+            ctx.fillStyle = COLORS.playerCar;
+            ctx.fillRect(
+                gameState.playerX,
+                gameState.playerY,
+                GAME_SETTINGS.carWidth,
+                GAME_SETTINGS.carHeight
+            );
+            
+            // 绘制赛车窗户
+            ctx.fillStyle = '#333';
+            ctx.fillRect(
+                gameState.playerX + 10,
+                gameState.playerY + 10,
+                GAME_SETTINGS.carWidth - 20,
+                GAME_SETTINGS.carHeight / 3
+            );
+            
+            // 绘制车轮
+            ctx.fillStyle = '#000';
+            const wheelSize = 10;
+            // 前轮
+            ctx.fillRect(gameState.playerX + 5, gameState.playerY + GAME_SETTINGS.carHeight - wheelSize, 15, wheelSize);
+            ctx.fillRect(gameState.playerX + GAME_SETTINGS.carWidth - 20, gameState.playerY + GAME_SETTINGS.carHeight - wheelSize, 15, wheelSize);
+            // 后轮
+            ctx.fillRect(gameState.playerX + 5, gameState.playerY + 10, 15, wheelSize);
+            ctx.fillRect(gameState.playerX + GAME_SETTINGS.carWidth - 20, gameState.playerY + 10, 15, wheelSize);
+        }
+        
+        // 生成敌人赛车
+        function spawnEnemy() {
+            if (!gameState.isRunning) return;
+            
+            const roadX = (canvas.width - GAME_SETTINGS.roadWidth) / 2;
+            const laneIndex = Math.floor(Math.random() * GAME_SETTINGS.laneCount);
+            const enemyX = roadX + laneIndex * GAME_SETTINGS.laneWidth + (GAME_SETTINGS.laneWidth - GAME_SETTINGS.carWidth) / 2;
+            
+            const enemy = {
+                x: enemyX,
+                y: -GAME_SETTINGS.carHeight,
+                width: GAME_SETTINGS.carWidth,
+                height: GAME_SETTINGS.carHeight,
+                color: COLORS.enemyCars[Math.floor(Math.random() * COLORS.enemyCars.length)]
+            };
+            
+            gameState.enemies.push(enemy);
+        }
+        
+        // 绘制敌人赛车
+        function drawEnemies() {
+            gameState.enemies.forEach(enemy => {
+                ctx.fillStyle = enemy.color;
+                ctx.fillRect(enemy.x, enemy.y, enemy.width, enemy.height);
+                
+                // 绘制敌人赛车窗户
+                ctx.fillStyle = '#333';
+                ctx.fillRect(
+                    enemy.x + 10,
+                    enemy.y + 10,
+                    enemy.width - 20,
+                    enemy.height / 3
+                );
+                
+                // 绘制敌人车轮
+                ctx.fillStyle = '#000';
+                const wheelSize = 10;
+                ctx.fillRect(enemy.x + 5, enemy.y + enemy.height - wheelSize, 15, wheelSize);
+                ctx.fillRect(enemy.x + enemy.width - 20, enemy.y + enemy.height - wheelSize, 15, wheelSize);
+                ctx.fillRect(enemy.x + 5, enemy.y + 10, 15, wheelSize);
+                ctx.fillRect(enemy.x + enemy.width - 20, enemy.y + 10, 15, wheelSize);
+            });
+        }
+        
+        // 更新敌人位置
+        function updateEnemies() {
+            gameState.enemies = gameState.enemies.filter(enemy => {
+                enemy.y += GAME_SETTINGS.enemySpeed;
+                // 移除超出屏幕的敌人
+                return enemy.y < canvas.height;
+            });
+        }
+        
+        // 检测碰撞
+        function checkCollisions() {
+            const player = {
+                x: gameState.playerX,
+                y: gameState.playerY,
+                width: GAME_SETTINGS.carWidth,
+                height: GAME_SETTINGS.carHeight
+            };
+            
+            for (const enemy of gameState.enemies) {
+                if (
+                    player.x < enemy.x + enemy.width &&
+                    player.x + player.width > enemy.x &&
+                    player.y < enemy.y + enemy.height &&
+                    player.y + player.height > enemy.y
+                ) {
+                    // 发生碰撞
+                    handleCollision();
+                    break;
+                }
+            }
+        }
+        
+        // 处理碰撞
+        function handleCollision() {
+            crashSound.volume = 0.5;
+            crashSound.play().catch(err => console.log('碰撞音效播放失败:', err));
+            
+            gameState.lives--;
+            livesElement.textContent = gameState.lives;
+            
+            // 闪烁效果
+            const originalColor = COLORS.playerCar;
+            COLORS.playerCar = '#ff3333';
+            
+            setTimeout(() => {
+                COLORS.playerCar = originalColor;
+            }, 500);
+            
+            if (gameState.lives <= 0) {
+                endGame();
+            }
+        }
+        
+        // 增加分数
+        function incrementScore() {
+            gameState.score += GAME_SETTINGS.scoreIncrement;
+            scoreElement.textContent = gameState.score;
+            
+            scoreSound.volume = 0.3;
+            scoreSound.play().catch(err => console.log('得分音效播放失败:', err));
+            
+            // 随着分数增加提高难度
+            if (gameState.score % 100 === 0) {
+                GAME_SETTINGS.enemySpeed += 0.5;
+                if (GAME_SETTINGS.enemySpawnRate > 500) {
+                    GAME_SETTINGS.enemySpawnRate -= 100;
+                    clearInterval(gameState.enemySpawnIntervalId);
+                    gameState.enemySpawnIntervalId = setInterval(spawnEnemy, GAME_SETTINGS.enemySpawnRate);
+                }
+            }
+        }
+        
+        // 结束游戏
+        function endGame() {
+            gameState.isRunning = false;
+            
+            // 停止音效
+            bgMusic.pause();
+            
+            // 清除定时器
+            clearInterval(gameState.scoreIntervalId);
+            clearInterval(gameState.enemySpawnIntervalId);
+            
+            // 更新游戏结束界面
+            finalScoreElement.textContent = gameState.score;
+            gameOverScreen.style.display = 'flex';
+        }
+        
+        // 控制赛车移动
+        function movePlayer(direction) {
+            const roadX = (canvas.width - GAME_SETTINGS.roadWidth) / 2;
+            const maxX = roadX + GAME_SETTINGS.roadWidth - GAME_SETTINGS.carWidth;
+            
+            if (direction === 'left' && gameState.playerX > roadX) {
+                gameState.playerX -= GAME_SETTINGS.carSpeed;
+            } else if (direction === 'right' && gameState.playerX < maxX) {
+                gameState.playerX += GAME_SETTINGS.carSpeed;
+            }
+        }
+        
+        // 事件监听
+        startBtn.addEventListener('click', initGame);
+        restartBtn.addEventListener('click', initGame);
+        
+        // 键盘控制
+        document.addEventListener('keydown', (e) => {
+            if (!gameState.isRunning) return;
+            
+            switch(e.key) {
+                case 'ArrowLeft':
+                    movePlayer('left');
+                    break;
+                case 'ArrowRight':
+                    movePlayer('right');
+                    break;
+            }
+        });
+        
+        // 触摸设备控制
+        leftBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            movePlayer('left');
+        });
+        
+        rightBtn.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+            movePlayer('right');
+        });
+        
+        // 鼠标/触摸控制（可选）
+        let isDragging = false;
+        let startX = 0;
+        
+        canvas.addEventListener('mousedown', (e) => {
+            if (!gameState.isRunning) return;
+            isDragging = true;
+            startX = e.clientX;
+        });
+        
+        canvas.addEventListener('mousemove', (e) => {
+            if (!isDragging || !gameState.isRunning) return;
+            const deltaX = e.clientX - startX;
+            if (deltaX < -10) {
+                movePlayer('left');
+                startX = e.clientX;
+            } else if (deltaX > 10) {
+                movePlayer('right');
+                startX = e.clientX;
+            }
+        });
+        
+        canvas.addEventListener('mouseup', () => {
+            isDragging = false;
+        });
+        
+        canvas.addEventListener('mouseleave', () => {
+            isDragging = false;
+        });
+        
+        // 触摸拖动控制
+        canvas.addEventListener('touchstart', (e) => {
+            if (!gameState.isRunning) return;
+            isDragging = true;
+            startX = e.touches[0].clientX;
+        });
+        
+        canvas.addEventListener('touchmove', (e) => {
+            if (!isDragging || !gameState.isRunning) return;
+            const deltaX = e.touches[0].clientX - startX;
+            if (deltaX < -10) {
+                movePlayer('left');
+                startX = e.touches[0].clientX;
+            } else if (deltaX > 10) {
+                movePlayer('right');
+                startX = e.touches[0].clientX;
+            }
+        });
+        
+        canvas.addEventListener('touchend', () => {
+            isDragging = false;
+        });
+    </script>
+</body>
+</html>
